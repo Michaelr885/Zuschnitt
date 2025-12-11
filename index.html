@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schnitt-Optimierer Pro - Table Print</title>
+    <title>Schnitt-Optimierer Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -34,28 +34,15 @@
         .input-transition:focus { transform: translateY(-1px); }
 
         /* ========================================= */
-        /* DRUCK STYLES (Tabelle vs Grafik)          */
+        /* DRUCK STYLES                              */
         /* ========================================= */
         
-        /* Standardmäßig Tabelle verstecken */
-        .print-only-table { display: none; }
-
         @media print, .print-preview {
             @page { margin: 1cm; size: A4; }
             
             /* UI Elemente ausblenden */
             .no-print, .header-bar, .settings-card, .input-group, button { 
                 display: none !important; 
-            }
-
-            /* Die grafischen Balken im Druck verstecken */
-            .screen-only-visuals {
-                display: none !important;
-            }
-
-            /* Die Tabelle im Druck anzeigen */
-            .print-only-table {
-                display: block !important;
             }
 
             /* Basis Layout für Papier */
@@ -68,14 +55,19 @@
                 overflow: visible !important;
             }
 
-            /* Karten Styling für Druck zurücksetzen (für 2D noch relevant) */
+            /* Karten Styling für Druck */
             .result-card, .card-base {
                 background-color: #ffffff !important;
-                border: none !important;
+                border: 1px solid #ddd !important;
                 box-shadow: none !important;
                 color: black !important;
-                margin-bottom: 0 !important;
+                margin-bottom: 15px !important;
                 page-break-inside: avoid;
+            }
+
+            /* Text Farben erzwingen */
+            .text-white, .text-gray-300, .text-indigo-400, .text-neutral-400, .text-neutral-500 {
+                color: #000000 !important;
             }
 
             /* SVG Optimierung (für 2D) */
@@ -92,12 +84,24 @@
                 border-bottom: 2px solid #000;
                 padding-bottom: 10px;
             }
+
+            /* Balken Hintergrund */
+            .bar-bg {
+                background-color: #f0f0f0 !important;
+                border: 1px solid #000 !important;
+            }
+            .cut-segment {
+                background-color: #ddd !important;
+                border-right: 1px solid #fff !important;
+                color: #000 !important;
+            }
             
-            /* Tabellen Styling für Druck */
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-            th { border-bottom: 2px solid #000; text-align: left; padding: 4px; }
-            td { border-bottom: 1px solid #ddd; padding: 4px; }
-            .print-row-header { margin-top: 20px; margin-bottom: 10px; font-weight: bold; font-size: 14px; border-bottom: 1px solid #000; padding-bottom: 5px; }
+            /* Sequence Chips für Druck optimieren */
+            .seq-chip {
+                border: 1px solid #000 !important;
+                background: #fff !important;
+                color: #000 !important;
+            }
         }
         
         .print-preview { overflow-y: auto !important; }
@@ -168,6 +172,12 @@
 
         // --- MAIN APP ---
         function App() {
+            // ============================================
+            //  HIER DIE VERSIONSNUMMER ÄNDERN
+            // ============================================
+            const APP_VERSION = "v1.0.0"; 
+            // ============================================
+
             const [mode, setMode] = useState('1d');
             const [previewMode, setPreviewMode] = useState(false);
 
@@ -175,9 +185,8 @@
             const [stockLength, setStockLength] = useState(6000);
             const [bladeWidth1D, setBladeWidth1D] = useState(3);
             const [items1D, setItems1D] = useState([
-                { id: 1, length: 1860, quantity: 2 },
-                { id: 2, length: 2800, quantity: 2 },
-                { id: 3, length: 50, quantity: 5 },
+                { id: 1, length: 2800, quantity: 2 },
+                { id: 2, length: 50, quantity: 10 },
             ]);
             const [results1D, setResults1D] = useState(null);
             const [stats1D, setStats1D] = useState(null);
@@ -294,7 +303,10 @@
                                     <IconHammer size={24} />
                                 </div>
                                 <div>
-                                    <h1 className="text-xl font-bold text-white tracking-tight">Schnitt-Optimierer</h1>
+                                    <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                                        Schnitt-Optimierer 
+                                        <span className="text-neutral-500 text-xs font-mono bg-neutral-800 px-1.5 py-0.5 rounded border border-neutral-700">{APP_VERSION}</span>
+                                    </h1>
                                     <p className="text-indigo-400 text-xs font-medium uppercase tracking-widest">Pro Edition</p>
                                 </div>
                             </div>
@@ -311,7 +323,7 @@
 
                     {/* Print Header */}
                     <div className="print-header hidden p-4">
-                        <h1 className="text-2xl font-bold text-black mb-2">Schnitt-Optimierer - Ergebnisbericht</h1>
+                        <h1 className="text-2xl font-bold text-black mb-2">Schnitt-Optimierer {APP_VERSION} - Ergebnisbericht</h1>
                         <p className="text-sm text-gray-600">Erstellt am: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</p>
                     </div>
 
@@ -465,50 +477,39 @@
 
                             <div className="space-y-4">
                                 {results1D.map((bar, idx) => (
-                                    <React.Fragment key={idx}>
-                                        
-                                        {/* OPTION A: SCREEN (Grafisch) */}
-                                        <Card className="overflow-hidden result-card screen-only-visuals">
-                                            <div className="flex justify-between items-center mb-4">
-                                                <span className="font-bold text-white flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Stange {idx + 1}</span>
-                                                <span className="text-xs text-neutral-400 bg-neutral-900 px-3 py-1 rounded-full border border-neutral-700">Rest: {bar.remainingSpace}mm</span>
-                                            </div>
-                                            <div className="h-10 w-full bg-neutral-900 bar-bg rounded-lg flex border border-neutral-700 relative">
-                                                {bar.cuts.map((cut, cIdx) => (
-                                                <div key={cIdx} style={{ width: `${(cut.totalSpace / stockLength) * 100}%` }} className="h-full bg-indigo-500 border-r border-indigo-400/30 flex items-center justify-center text-[10px] text-white whitespace-nowrap font-medium cut-segment">
-                                                    <span className="cut-label no-print">{cut.length}</span>
-                                                </div>
-                                                ))}
-                                                {/* Schraffierter Restbereich */}
-                                                <div className="flex-1 h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.03) 5px, rgba(255,255,255,0.03) 10px)' }}></div>
-                                            </div>
-                                        </Card>
-
-                                        {/* OPTION B: PRINT (Tabelle) */}
-                                        <div className="print-only-table">
-                                            <div className="print-row-header">
-                                                Stange {idx + 1} <span style={{fontSize: '11px', fontWeight: 'normal', marginLeft: '10px'}}>(Rest: {bar.remainingSpace} mm)</span>
-                                            </div>
-                                            <table>
-                                                <thead>
-                                                    <tr style={{backgroundColor: '#f3f3f3'}}>
-                                                        <th style={{width: '10%'}}>#</th>
-                                                        <th style={{width: '70%'}}>Schnitt-Länge (mm)</th>
-                                                        <th style={{width: '20%'}}>Check</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {bar.cuts.map((cut, cIdx) => (
-                                                        <tr key={cIdx}>
-                                                            <td>{cIdx + 1}</td>
-                                                            <td><strong>{cut.length}</strong></td>
-                                                            <td><div style={{width: '12px', height: '12px', border: '1px solid #000', margin: '0 auto'}}></div></td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                    <Card key={idx} className="overflow-hidden result-card">
+                                        {/* Header Zeile */}
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="font-bold text-white flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500 no-print"></div> Stange {idx + 1}</span>
+                                            <span className="text-xs text-neutral-400 bg-neutral-900 px-3 py-1 rounded-full border border-neutral-700 no-print">Rest: {bar.remainingSpace}mm</span>
+                                            <span className="text-xs text-black border border-black px-2 py-1 rounded hidden print:block">Rest: {bar.remainingSpace}mm</span>
                                         </div>
-                                    </React.Fragment>
+
+                                        {/* 1. VISUELLE BALKEN (Ohne Text bei kleinen Teilen) */}
+                                        <div className="h-10 w-full bg-neutral-900 bar-bg rounded-lg flex border border-neutral-700 relative mb-4">
+                                            {bar.cuts.map((cut, cIdx) => {
+                                                const percent = (cut.totalSpace / stockLength) * 100;
+                                                const isTiny = percent < 4; // Wenn kleiner als 4%, Text ausblenden
+                                                return (
+                                                    <div key={cIdx} style={{ width: `${percent}%` }} className="h-full bg-indigo-500 border-r border-indigo-400/30 flex items-center justify-center text-[10px] text-white whitespace-nowrap font-medium cut-segment transition-all hover:opacity-80" title={`${cut.length}mm`}>
+                                                        { !isTiny && cut.length }
+                                                    </div>
+                                                );
+                                            })}
+                                            {/* Schraffierter Restbereich */}
+                                            <div className="flex-1 h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.03) 5px, rgba(255,255,255,0.03) 10px)' }}></div>
+                                        </div>
+
+                                        {/* 2. SCHNITT-REIHENFOLGE (Chips / Badges) - Die eigentliche Lösung */}
+                                        <div className="flex flex-wrap gap-2 items-center">
+                                            <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-2">Schnitt-Reihenfolge:</span>
+                                            {bar.cuts.map((cut, cIdx) => (
+                                                <div key={cIdx} className="bg-neutral-700 text-white text-xs font-mono py-1 px-2.5 rounded-md border border-neutral-600 shadow-sm seq-chip">
+                                                    {cut.length}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </Card>
                                 ))}
                             </div>
                         </div>
