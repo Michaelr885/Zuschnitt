@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schnitt-Optimierer Pro - Table Print</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #171717;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #171717; }
+        ::-webkit-scrollbar-thumb { background: #404040; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #525252; }
+
+        /* Animationen */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-slideUp { animation: slideUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+        .input-transition { transition: all 0.2s ease; }
+        .input-transition:focus { transform: translateY(-1px); }
+
+        /* ========================================= */
+        /* DRUCK STYLES (Tabelle vs Grafik)          */
+        /* ========================================= */
+        
+        /* Standardmäßig Tabelle verstecken */
+        .print-only-table { display: none; }
+
+        @media print, .print-preview {
+            @page { margin: 1cm; size: A4; }
+            
+            /* UI Elemente ausblenden */
+            .no-print, .header-bar, .settings-card, .input-group, button { 
+                display: none !important; 
+            }
+
+            /* Die grafischen Balken im Druck verstecken */
+            .screen-only-visuals {
+                display: none !important;
+            }
+
+            /* Die Tabelle im Druck anzeigen */
+            .print-only-table {
+                display: block !important;
+            }
+
+            /* Basis Layout für Papier */
+            body, #root, .min-h-screen {
+                background-color: #ffffff !important;
+                color: #000000 !important;
+                height: auto !important;
+                min-height: 0 !important;
+                padding-bottom: 0 !important;
+                overflow: visible !important;
+            }
+
+            /* Karten Styling für Druck zurücksetzen (für 2D noch relevant) */
+            .result-card, .card-base {
+                background-color: #ffffff !important;
+                border: none !important;
+                box-shadow: none !important;
+                color: black !important;
+                margin-bottom: 0 !important;
+                page-break-inside: avoid;
+            }
+
+            /* SVG Optimierung (für 2D) */
+            svg rect[fill="#171717"] {
+                fill: #ffffff !important;
+                stroke: #000000 !important;
+                stroke-width: 1px !important;
+            }
+
+            /* Print Header anzeigen */
+            .print-header {
+                display: block !important;
+                margin-bottom: 20px;
+                border-bottom: 2px solid #000;
+                padding-bottom: 10px;
+            }
+            
+            /* Tabellen Styling für Druck */
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+            th { border-bottom: 2px solid #000; text-align: left; padding: 4px; }
+            td { border-bottom: 1px solid #ddd; padding: 4px; }
+            .print-row-header { margin-top: 20px; margin-bottom: 10px; font-weight: bold; font-size: 14px; border-bottom: 1px solid #000; padding-bottom: 5px; }
+        }
+        
+        .print-preview { overflow-y: auto !important; }
+        .print-header { display: none; }
+    </style>
+</head>
+<body class="text-gray-200 antialiased selection:bg-indigo-500 selection:text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- ICONS ---
+        const IconHammer = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 12-8.5 8.5c-.83.83-2.17.83-3 0 0 0 0 0 0 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25V7.86c0-.55-.45-1-1-1H16.14c-.85 0-1.65-.33-2.25-.93L12.64 4.64"/></svg>;
+        const IconSettings = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
+        const IconRuler = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>;
+        const IconCalculator = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>;
+        const IconPlus = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
+        const IconTrash = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+        const IconInfo = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>;
+        const IconGrid = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>;
+        const IconPrinter = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>;
+        const IconEye = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>;
+
+        // --- COMPONENTS ---
+        const Card = ({ children, className="" }) => (
+            <div className={`bg-neutral-800 rounded-3xl p-6 shadow-xl border border-neutral-700/50 card-base ${className}`}>
+                {children}
+            </div>
+        );
+
+        const InputGroup = ({ label, value, onChange, placeholder, type="number" }) => (
+            <div className="input-group">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 ml-1">{label}</label>
+                <input 
+                    type={type} 
+                    value={value} 
+                    onChange={onChange} 
+                    placeholder={placeholder}
+                    className="w-full bg-neutral-700 text-white rounded-xl px-4 py-3 outline-none border border-transparent focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 input-transition placeholder-neutral-500" 
+                />
+            </div>
+        );
+
+        // --- 2D PACKING ---
+        class Packer {
+            constructor(w, h) { this.root = { x: 0, y: 0, w: w, h: h }; }
+            fit(blocks) {
+                let n, node, block;
+                for (n = 0; n < blocks.length; n++) {
+                    block = blocks[n];
+                    if (node = this.findNode(this.root, block.w, block.h))
+                        block.fit = this.splitNode(node, block.w, block.h);
+                }
+            }
+            findNode(root, w, h) {
+                if (root.used) return this.findNode(root.right, w, h) || this.findNode(root.down, w, h);
+                else if ((w <= root.w) && (h <= root.h)) return root;
+                else return null;
+            }
+            splitNode(node, w, h) {
+                node.used = true;
+                node.down  = { x: node.x,      y: node.y + h, w: node.w,      h: node.h - h };
+                node.right = { x: node.x + w, y: node.y,      w: node.w - w, h: h          };
+                return node;
+            }
+        }
+
+        // --- MAIN APP ---
+        function App() {
+            const [mode, setMode] = useState('1d');
+            const [previewMode, setPreviewMode] = useState(false);
+
+            // --- 1D STATE ---
+            const [stockLength, setStockLength] = useState(6000);
+            const [bladeWidth1D, setBladeWidth1D] = useState(3);
+            const [items1D, setItems1D] = useState([
+                { id: 1, length: 1860, quantity: 2 },
+                { id: 2, length: 2800, quantity: 2 },
+                { id: 3, length: 50, quantity: 5 },
+            ]);
+            const [results1D, setResults1D] = useState(null);
+            const [stats1D, setStats1D] = useState(null);
+
+            // --- 2D STATE ---
+            const [sheetWidth, setSheetWidth] = useState(2000);
+            const [sheetHeight, setSheetHeight] = useState(1000);
+            const [bladeWidth2D, setBladeWidth2D] = useState(3);
+            const [items2D, setItems2D] = useState([
+                { id: 1, width: 500, height: 400, quantity: 5 },
+                { id: 2, width: 800, height: 600, quantity: 2 },
+            ]);
+            const [results2D, setResults2D] = useState(null);
+            const [stats2D, setStats2D] = useState(null);
+            const [error, setError] = useState('');
+
+            // Vorschau Toggle Effekt
+            useEffect(() => {
+                if (previewMode) {
+                    document.documentElement.classList.add('print-preview');
+                } else {
+                    document.documentElement.classList.remove('print-preview');
+                }
+            }, [previewMode]);
+
+            // --- LOGIC 1D ---
+            const handleItemChange1D = (id, field, value) => setItems1D(items1D.map(i => i.id === id ? { ...i, [field]: parseFloat(value) || 0 } : i));
+            const addItem1D = () => setItems1D([...items1D, { id: Date.now(), length: 0, quantity: 1 }]);
+            const removeItem1D = (id) => setItems1D(items1D.filter(i => i.id !== id));
+            const calculate1D = () => {
+                setError('');
+                if (stockLength <= 0) { setError('Stangenlänge ungültig'); return; }
+                let allCuts = [];
+                items1D.forEach(item => {
+                    if (item.length > 0 && item.quantity > 0) {
+                        if (item.length > stockLength) setError(`Teil ${item.length}mm zu lang für Stange!`);
+                        for (let i = 0; i < item.quantity; i++) allCuts.push({ id: item.id, length: item.length, totalSpace: item.length + bladeWidth1D });
+                    }
+                });
+                if (error) return;
+                if (allCuts.length === 0) { setError('Keine Teile eingetragen'); return; }
+                allCuts.sort((a, b) => b.totalSpace - a.totalSpace);
+                let bars = [];
+                allCuts.forEach(cut => {
+                    let placed = false;
+                    for (let bar of bars) {
+                        if (bar.remainingSpace >= cut.totalSpace) {
+                            bar.cuts.push(cut);
+                            bar.remainingSpace -= cut.totalSpace;
+                            placed = true; break;
+                        }
+                    }
+                    if (!placed) bars.push({ cuts: [cut], remainingSpace: stockLength - cut.totalSpace });
+                });
+                let totalWaste = 0;
+                bars.forEach(b => totalWaste += b.remainingSpace);
+                const usedMat = bars.length * stockLength;
+                const reqMat = allCuts.reduce((acc, c) => acc + c.length, 0);
+                setStats1D({ totalBars: bars.length, wastePercentage: (((usedMat - reqMat) / usedMat) * 100).toFixed(1), totalWaste });
+                setResults1D(bars);
+            };
+
+            // --- LOGIC 2D ---
+            const handleItemChange2D = (id, field, value) => setItems2D(items2D.map(i => i.id === id ? { ...i, [field]: parseFloat(value) || 0 } : i));
+            const addItem2D = () => setItems2D([...items2D, { id: Date.now(), width: 0, height: 0, quantity: 1 }]);
+            const removeItem2D = (id) => setItems2D(items2D.filter(i => i.id !== id));
+            const calculate2D = () => {
+                setError('');
+                if (sheetWidth <= 0 || sheetHeight <= 0) { setError('Plattengröße ungültig'); return; }
+                let blocks = [];
+                items2D.forEach(item => {
+                    if (item.width > 0 && item.height > 0 && item.quantity > 0) {
+                        if ((item.width + bladeWidth2D > sheetWidth || item.height + bladeWidth2D > sheetHeight) && (item.width + bladeWidth2D > sheetHeight || item.height + bladeWidth2D > sheetWidth)) 
+                            setError(`Teil ${item.width}x${item.height} passt nicht auf Platte!`);
+                        for (let i = 0; i < item.quantity; i++) blocks.push({ w: item.width + bladeWidth2D, h: item.height + bladeWidth2D, originalW: item.width, originalH: item.height, id: item.id });
+                    }
+                });
+                if (error) return;
+                if (blocks.length === 0) { setError('Keine Platten-Teile eingetragen'); return; }
+                blocks.sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h));
+                let sheets = [], unpacked = [...blocks], safetyCounter = 0;
+                while (unpacked.length > 0 && safetyCounter < 100) {
+                    safetyCounter++;
+                    let packer = new Packer(sheetWidth, sheetHeight);
+                    let currentSheetBlocks = [], nextUnpacked = [];
+                    packer.fit(unpacked);
+                    for (let n = 0; n < unpacked.length; n++) {
+                        let block = unpacked[n];
+                        if (block.fit) currentSheetBlocks.push(block);
+                        else nextUnpacked.push(block);
+                    }
+                    sheets.push({ blocks: currentSheetBlocks });
+                    if (nextUnpacked.length === unpacked.length) { setError('Ein Teil ist zu groß für die Platte.'); return; }
+                    unpacked = nextUnpacked;
+                }
+                const usedAreaTotal = sheets.length * (sheetWidth * sheetHeight);
+                const partsAreaTotal = blocks.reduce((acc, b) => acc + (b.originalW * b.originalH), 0);
+                setStats2D({ totalSheets: sheets.length, wastePercentage: ((usedAreaTotal - partsAreaTotal) / usedAreaTotal * 100).toFixed(1), usedArea: partsAreaTotal });
+                setResults2D(sheets);
+            };
+
+            const handlePrint = () => {
+                window.print();
+            };
+
+            return (
+                <div className="min-h-screen pb-20 relative">
+                    
+                    {/* Header */}
+                    <div className="bg-neutral-900/80 backdrop-blur-md border-b border-neutral-800 sticky top-0 z-50 header-bar no-print">
+                        <div className="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-500/20">
+                                    <IconHammer size={24} />
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold text-white tracking-tight">Schnitt-Optimierer</h1>
+                                    <p className="text-indigo-400 text-xs font-medium uppercase tracking-widest">Pro Edition</p>
+                                </div>
+                            </div>
+                            
+                            {/* Vorschau Button */}
+                            <button 
+                                onClick={() => setPreviewMode(!previewMode)}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${previewMode ? 'bg-white text-black' : 'bg-neutral-800 text-gray-400 border border-neutral-700'}`}
+                            >
+                                <IconEye size={16} /> {previewMode ? 'Vorschau beenden' : 'Druck-Vorschau'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Print Header */}
+                    <div className="print-header hidden p-4">
+                        <h1 className="text-2xl font-bold text-black mb-2">Schnitt-Optimierer - Ergebnisbericht</h1>
+                        <p className="text-sm text-gray-600">Erstellt am: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</p>
+                    </div>
+
+                    <div className="max-w-2xl mx-auto p-6 space-y-8">
+
+                        {/* MODE SWITCHER */}
+                        <div className="bg-neutral-800 p-1.5 rounded-full shadow-lg flex relative border border-neutral-700 no-print">
+                            <button 
+                                onClick={() => setMode('1d')}
+                                className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === '1d' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
+                            >
+                                <IconRuler size={18} /> Stangen (1D)
+                            </button>
+                            <button 
+                                onClick={() => setMode('2d')}
+                                className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === '2d' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
+                            >
+                                <IconGrid size={18} /> Platten (2D)
+                            </button>
+                        </div>
+
+                        {/* ================= 1D MODE ================= */}
+                        {mode === '1d' && (
+                            <div className="space-y-8 animate-fadeIn">
+                                {/* Settings 1D */}
+                                <div className="settings-card no-print">
+                                    <Card>
+                                        <h2 className="text-indigo-400 text-sm font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
+                                            <IconSettings size={18} /> Material Einstellungen
+                                        </h2>
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <InputGroup label="Stangenlänge (mm)" value={stockLength} onChange={(e) => setStockLength(parseFloat(e.target.value)||0)} />
+                                            <InputGroup label="Sägeblatt (mm)" value={bladeWidth1D} onChange={(e) => setBladeWidth1D(parseFloat(e.target.value)||0)} />
+                                        </div>
+                                    </Card>
+
+                                    {/* List 1D */}
+                                    <Card className="mt-8">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <h2 className="text-gray-300 text-sm font-bold uppercase tracking-wider">Teile-Liste</h2>
+                                            <button onClick={addItem1D} className="bg-indigo-600/20 text-indigo-300 p-2 rounded-xl hover:bg-indigo-600 hover:text-white transition-colors">
+                                                <IconPlus size={20} />
+                                            </button>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {items1D.map((item, index) => (
+                                                <div key={item.id} className="flex items-center gap-3 bg-neutral-900/50 p-2 rounded-2xl border border-neutral-800 pr-4">
+                                                    <div className="text-neutral-600 font-mono text-xs w-8 text-center font-bold">#{index + 1}</div>
+                                                    <div className="flex-1">
+                                                        <input type="number" placeholder="Länge" value={item.length||''} onChange={(e) => handleItemChange1D(item.id, 'length', e.target.value)} className="w-full bg-transparent text-white p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors" />
+                                                    </div>
+                                                    <div className="w-20 border-l border-neutral-800 pl-3">
+                                                        <input type="number" placeholder="Anz" value={item.quantity||''} onChange={(e) => handleItemChange1D(item.id, 'quantity', e.target.value)} className="w-full bg-transparent text-center text-indigo-300 font-bold p-2 outline-none text-sm placeholder-neutral-600" />
+                                                    </div>
+                                                    <button onClick={() => removeItem1D(item.id)} className="p-2 text-neutral-500 hover:text-red-400 transition-colors"><IconTrash size={18} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </Card>
+
+                                    <button onClick={calculate1D} className="w-full mt-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-900/30 flex justify-center items-center gap-3 active:scale-[0.98] transition-all text-lg">
+                                        <IconCalculator size={22} /> Optimierung Starten
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ================= 2D MODE ================= */}
+                        {mode === '2d' && (
+                            <div className="space-y-8 animate-fadeIn">
+                                {/* Settings 2D */}
+                                <div className="settings-card no-print">
+                                    <Card>
+                                        <h2 className="text-indigo-400 text-sm font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
+                                            <IconGrid size={18} /> Platten Einstellungen
+                                        </h2>
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <InputGroup label="Breite" value={sheetWidth} onChange={(e) => setSheetWidth(parseFloat(e.target.value)||0)} />
+                                            <InputGroup label="Höhe" value={sheetHeight} onChange={(e) => setSheetHeight(parseFloat(e.target.value)||0)} />
+                                            <InputGroup label="Schnitt" value={bladeWidth2D} onChange={(e) => setBladeWidth2D(parseFloat(e.target.value)||0)} />
+                                        </div>
+                                    </Card>
+
+                                    {/* List 2D */}
+                                    <Card className="mt-8">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <h2 className="text-gray-300 text-sm font-bold uppercase tracking-wider">Zuschnitt-Liste</h2>
+                                            <button onClick={addItem2D} className="bg-indigo-600/20 text-indigo-300 p-2 rounded-xl hover:bg-indigo-600 hover:text-white transition-colors">
+                                                <IconPlus size={20} />
+                                            </button>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {items2D.map((item, index) => (
+                                                <div key={item.id} className="flex items-center gap-3 bg-neutral-900/50 p-2 rounded-2xl border border-neutral-800 pr-4 flex-wrap sm:flex-nowrap">
+                                                    <div className="text-neutral-600 font-mono text-xs w-8 text-center font-bold">#{index + 1}</div>
+                                                    <div className="flex gap-2 flex-1 items-center">
+                                                        <div className="relative flex-1">
+                                                            <input type="number" placeholder="B" value={item.width||''} onChange={(e) => handleItemChange2D(item.id, 'width', e.target.value)} className="w-full bg-transparent text-white p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors" />
+                                                        </div>
+                                                        <span className="text-neutral-600 text-xs">x</span>
+                                                        <div className="relative flex-1">
+                                                            <input type="number" placeholder="H" value={item.height||''} onChange={(e) => handleItemChange2D(item.id, 'height', e.target.value)} className="w-full bg-transparent text-white p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-20 border-l border-neutral-800 pl-3">
+                                                        <input type="number" placeholder="Anz" value={item.quantity||''} onChange={(e) => handleItemChange2D(item.id, 'quantity', e.target.value)} className="w-full bg-transparent text-center text-indigo-300 font-bold p-2 outline-none text-sm placeholder-neutral-600" />
+                                                    </div>
+                                                    <button onClick={() => removeItem2D(item.id)} className="p-2 text-neutral-500 hover:text-red-400 transition-colors"><IconTrash size={18} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </Card>
+
+                                    <button onClick={calculate2D} className="w-full mt-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-900/30 flex justify-center items-center gap-3 active:scale-[0.98] transition-all text-lg">
+                                        <IconCalculator size={22} /> Optimierung Starten
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Error Message */}
+                        {error && (
+                        <div className="bg-red-500/10 text-red-400 p-4 rounded-2xl border border-red-500/20 flex items-center gap-3 animate-fadeIn no-print">
+                            <IconInfo size={20} /> <span className="font-medium">{error}</span>
+                        </div>
+                        )}
+
+                        {/* ================= RESULTS SECTION ================= */}
+                        {/* Print Button */}
+                        {((mode === '1d' && results1D && !error) || (mode === '2d' && results2D && !error)) && (
+                            <div className="flex justify-end no-print">
+                                <button onClick={handlePrint} className="bg-neutral-700 hover:bg-neutral-600 text-white font-medium py-2 px-4 rounded-xl flex items-center gap-2 transition-colors">
+                                    <IconPrinter size={18} /> Als PDF / Drucken
+                                </button>
+                            </div>
+                        )}
+
+                        {/* RESULTS 1D */}
+                        {mode === '1d' && results1D && !error && (
+                        <div className="space-y-6 animate-slideUp">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-emerald-500/10 p-5 rounded-3xl border border-emerald-500/20 text-center card-base">
+                                    <div className="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-1">Stangen</div>
+                                    <div className="text-3xl font-bold text-white">{stats1D.totalBars}</div>
+                                </div>
+                                <div className="bg-orange-500/10 p-5 rounded-3xl border border-orange-500/20 text-center card-base">
+                                    <div className="text-orange-400 text-xs font-bold uppercase tracking-widest mb-1">Verschnitt</div>
+                                    <div className="text-3xl font-bold text-white">{stats1D.wastePercentage}%</div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {results1D.map((bar, idx) => (
+                                    <React.Fragment key={idx}>
+                                        
+                                        {/* OPTION A: SCREEN (Grafisch) */}
+                                        <Card className="overflow-hidden result-card screen-only-visuals">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <span className="font-bold text-white flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Stange {idx + 1}</span>
+                                                <span className="text-xs text-neutral-400 bg-neutral-900 px-3 py-1 rounded-full border border-neutral-700">Rest: {bar.remainingSpace}mm</span>
+                                            </div>
+                                            <div className="h-10 w-full bg-neutral-900 bar-bg rounded-lg flex border border-neutral-700 relative">
+                                                {bar.cuts.map((cut, cIdx) => (
+                                                <div key={cIdx} style={{ width: `${(cut.totalSpace / stockLength) * 100}%` }} className="h-full bg-indigo-500 border-r border-indigo-400/30 flex items-center justify-center text-[10px] text-white whitespace-nowrap font-medium cut-segment">
+                                                    <span className="cut-label no-print">{cut.length}</span>
+                                                </div>
+                                                ))}
+                                                {/* Schraffierter Restbereich */}
+                                                <div className="flex-1 h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.03) 5px, rgba(255,255,255,0.03) 10px)' }}></div>
+                                            </div>
+                                        </Card>
+
+                                        {/* OPTION B: PRINT (Tabelle) */}
+                                        <div className="print-only-table">
+                                            <div className="print-row-header">
+                                                Stange {idx + 1} <span style={{fontSize: '11px', fontWeight: 'normal', marginLeft: '10px'}}>(Rest: {bar.remainingSpace} mm)</span>
+                                            </div>
+                                            <table>
+                                                <thead>
+                                                    <tr style={{backgroundColor: '#f3f3f3'}}>
+                                                        <th style={{width: '10%'}}>#</th>
+                                                        <th style={{width: '70%'}}>Schnitt-Länge (mm)</th>
+                                                        <th style={{width: '20%'}}>Check</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {bar.cuts.map((cut, cIdx) => (
+                                                        <tr key={cIdx}>
+                                                            <td>{cIdx + 1}</td>
+                                                            <td><strong>{cut.length}</strong></td>
+                                                            <td><div style={{width: '12px', height: '12px', border: '1px solid #000', margin: '0 auto'}}></div></td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                        </div>
+                        )}
+
+                        {/* RESULTS 2D */}
+                        {mode === '2d' && results2D && !error && (
+                        <div className="space-y-6 animate-slideUp">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-emerald-500/10 p-5 rounded-3xl border border-emerald-500/20 text-center card-base">
+                                    <div className="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-1">Platten</div>
+                                    <div className="text-3xl font-bold text-white">{stats2D.totalSheets}</div>
+                                </div>
+                                <div className="bg-orange-500/10 p-5 rounded-3xl border border-orange-500/20 text-center card-base">
+                                    <div className="text-orange-400 text-xs font-bold uppercase tracking-widest mb-1">Verschnitt</div>
+                                    <div className="text-3xl font-bold text-white">{stats2D.wastePercentage}%</div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-8">
+                                {results2D.map((sheet, idx) => (
+                                    <Card key={idx} className="result-card">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <span className="font-bold text-white text-lg">Platte {idx + 1}</span>
+                                            <span className="text-xs text-indigo-200 bg-indigo-500/20 border border-indigo-500/30 px-3 py-1 rounded-full">{sheetWidth} x {sheetHeight} mm</span>
+                                        </div>
+                                        
+                                        <div className="w-full overflow-hidden rounded-lg border-2 border-neutral-700 bg-neutral-900 relative shadow-inner print:border-black print:bg-white" style={{ aspectRatio: `${sheetWidth}/${sheetHeight}` }}>
+                                            <svg viewBox={`0 0 ${sheetWidth} ${sheetHeight}`} className="w-full h-full block">
+                                                {/* Hintergrund Gittermuster */}
+                                                <rect x="0" y="0" width={sheetWidth} height={sheetHeight} fill="#171717" />
+                                                {sheet.blocks.map((block, bIdx) => {
+                                                    // Intelligente Schriftgröße: Nicht kleiner als 12px (in relation)
+                                                    const fontSize = Math.max(12, Math.min(block.originalW, block.originalH) / 5);
+                                                    
+                                                    return (
+                                                    <g key={bIdx}>
+                                                        <rect 
+                                                            x={block.fit.x} 
+                                                            y={block.fit.y} 
+                                                            width={block.originalW} 
+                                                            height={block.originalH} 
+                                                            fill="rgba(79, 70, 229, 0.4)" 
+                                                            stroke="#818cf8" 
+                                                            strokeWidth={Math.max(sheetWidth, sheetHeight) / 500}
+                                                        />
+                                                        {(block.originalW > sheetWidth/50 && block.originalH > sheetHeight/50) && (
+                                                            <text 
+                                                                x={block.fit.x + block.originalW/2} 
+                                                                y={block.fit.y + block.originalH/2} 
+                                                                dominantBaseline="middle" 
+                                                                textAnchor="middle" 
+                                                                fill="white" 
+                                                                fontWeight="bold"
+                                                                fontSize={fontSize}
+                                                                style={{pointerEvents: 'none', textShadow: '0 1px 2px rgba(0,0,0,0.8)'}}
+                                                            >
+                                                                {block.originalW}x{block.originalH}
+                                                            </text>
+                                                        )}
+                                                    </g>
+                                                )})}
+                                            </svg>
+                                        </div>
+                                        <div className="mt-4 text-xs text-center text-gray-500 font-mono">
+                                            Schwarze Fläche = Abfall ({((1 - (sheet.blocks.reduce((a,b)=>a+(b.originalW*b.originalH),0) / (sheetWidth*sheetHeight)))*100).toFixed(1)}%)
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
