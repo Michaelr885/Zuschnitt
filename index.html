@@ -44,7 +44,7 @@
             @page { margin: 0.5cm; size: A4; }
             
             /* UI Elemente ausblenden */
-            .no-print, .header-bar, .settings-card, .input-group, button, .tab-switcher { 
+            .no-print, .header-bar, .settings-card, .input-group, button, .tab-switcher, .preset-selector { 
                 display: none !important; 
             }
 
@@ -152,6 +152,7 @@
         const IconClose = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>;
         const IconTag = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>;
         const IconTriangle = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18L3 3v18z"/></svg>;
+        const IconList = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
 
         // --- COMPONENTS ---
         const Card = ({ children, className="" }) => (
@@ -173,6 +174,19 @@
                 />
             </div>
         );
+
+        // --- DATA CONSTANTS (1.5D / Bauart 3) ---
+        // r90 = Radius 90°, r45 = Baumaß 45° (X)
+        const BOGEN_DATA_1_5D = [
+            { dn: 20, r90: 28.5, r45: 12 },
+            { dn: 25, r90: 38,   r45: 14 },
+            { dn: 32, r90: 47.5, r45: 19 },
+            { dn: 40, r90: 57,   r45: 24 },
+            { dn: 50, r90: 76,   r45: 30 },
+            { dn: 65, r90: 95,   r45: 40 },
+            { dn: 80, r90: 115,  r45: 48 },
+            { dn: 100,r90: 152.5,r45: 63 },
+        ];
 
         // --- 2D PACKING ---
         class Packer {
@@ -203,12 +217,12 @@
             // ============================================
             //  HIER DIE VERSIONSNUMMER ÄNDERN
             // ============================================
-            const APP_VERSION = "v1.2.0"; 
+            const APP_VERSION = "v1.4.0"; 
             // ============================================
 
             const [mode, setMode] = useState('1d');
             const [previewMode, setPreviewMode] = useState(false);
-            const [showLabels, setShowLabels] = useState(false); // New: Label Mode
+            const [showLabels, setShowLabels] = useState(false); 
 
             // --- 1D STATE ---
             const [stockLength, setStockLength] = useState(6000);
@@ -236,9 +250,10 @@
             const [stats2D, setStats2D] = useState(null);
             
             // --- CALC STATE (Etagen) ---
-            const [calcOffset, setCalcOffset] = useState(500); // Versatz
-            const [calcAngle, setCalcAngle] = useState(45); // Winkel
-            const [calcTakeoff, setCalcTakeoff] = useState(0); // Bogenabzug
+            const [calcOffset, setCalcOffset] = useState(500); 
+            const [calcAngle, setCalcAngle] = useState(45); 
+            const [calcTakeoff, setCalcTakeoff] = useState(0); 
+            const [selectedPresetDN, setSelectedPresetDN] = useState("");
             
             const [error, setError] = useState('');
 
@@ -262,7 +277,6 @@
                 
                 rows.forEach(row => {
                     let cleanRow = row.trim().replace(/,/g, '.');
-                    // Versuch Split: Tab oder Semikolon
                     let parts = cleanRow.split('\t');
                     if (parts.length < 2) parts = cleanRow.split(';');
                     if (parts.length < 2) parts = cleanRow.split(/\s+/);
@@ -270,7 +284,7 @@
                     if (parts.length >= 2) {
                         const len = parseFloat(parts[0]);
                         const qty = parseFloat(parts[1]);
-                        const name = parts[2] ? parts.slice(2).join(' ') : ''; // Rest als Name
+                        const name = parts[2] ? parts.slice(2).join(' ') : ''; 
                         
                         if (!isNaN(len) && !isNaN(qty) && len > 0 && qty > 0) {
                             newItems.push({ id: Date.now() + Math.random(), length: len, quantity: qty, name: name.trim() });
@@ -294,7 +308,6 @@
                 items1D.forEach(item => {
                     if (item.length > 0 && item.quantity > 0) {
                         if (item.length > stockLength) setError(`Teil ${item.length}mm zu lang für Stange!`);
-                        // WICHTIG: Name mit übergeben
                         for (let i = 0; i < item.quantity; i++) allCuts.push({ id: item.id, length: item.length, totalSpace: item.length + bladeWidth1D, name: item.name });
                     }
                 });
@@ -319,7 +332,7 @@
                 const reqMat = allCuts.reduce((acc, c) => acc + c.length, 0);
                 setStats1D({ totalBars: bars.length, wastePercentage: (((usedMat - reqMat) / usedMat) * 100).toFixed(1), totalWaste });
                 setResults1D(bars);
-                setShowLabels(false); // Reset Label View on calc
+                setShowLabels(false);
             };
 
             // --- LOGIC 2D ---
@@ -364,7 +377,6 @@
             // --- CALCULATOR LOGIC ---
             const calculateEtage = () => {
                 if(!calcAngle || calcAngle <= 0 || calcAngle >= 90) return { hypotenuse: 0, cutLength: 0 };
-                // Hypotenuse = Gegenkathete / sin(alpha)
                 const rad = calcAngle * (Math.PI / 180);
                 const hypotenuse = calcOffset / Math.sin(rad);
                 const cutLength = hypotenuse - (2 * calcTakeoff);
@@ -372,11 +384,22 @@
             };
             const etageResult = calculateEtage();
 
+            const handlePresetChange = (e) => {
+                const dn = parseFloat(e.target.value);
+                setSelectedPresetDN(e.target.value);
+                
+                const found = BOGEN_DATA_1_5D.find(d => d.dn === dn);
+                if(found) {
+                    // Smart Selection: If angle is approx 90, use r90, otherwise default to r45 (for offset)
+                    const is90 = Math.abs(calcAngle - 90) < 5;
+                    setCalcTakeoff(is90 ? found.r90 : found.r45);
+                }
+            };
+
             const handlePrint = () => {
                 window.print();
             };
 
-            // Helper to expand items for label view
             const getLabelItems = () => {
                 let labels = [];
                 items1D.forEach(item => {
@@ -406,7 +429,6 @@
                                 </div>
                             </div>
                             
-                            {/* Vorschau Button */}
                             <button 
                                 onClick={() => setPreviewMode(!previewMode)}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${previewMode ? 'bg-white text-black' : 'bg-neutral-800 text-gray-400 border border-neutral-700'}`}
@@ -426,388 +448,4 @@
 
                         {/* MODE SWITCHER */}
                         <div className="bg-neutral-800 p-1.5 rounded-full shadow-lg flex relative border border-neutral-700 no-print tab-switcher">
-                            <button 
-                                onClick={() => setMode('1d')}
-                                className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === '1d' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
-                            >
-                                <IconRuler size={18} /> Stangen (1D)
-                            </button>
-                            <button 
-                                onClick={() => setMode('2d')}
-                                className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === '2d' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
-                            >
-                                <IconGrid size={18} /> Platten (2D)
-                            </button>
-                            {/* NEW: Rechner Tab */}
-                            <button 
-                                onClick={() => setMode('calc')}
-                                className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === 'calc' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
-                            >
-                                <IconTriangle size={18} /> Rechner
-                            </button>
-                        </div>
-
-                        {/* ================= 1D MODE ================= */}
-                        {mode === '1d' && (
-                            <div className="space-y-8 animate-fadeIn">
-                                {/* Settings 1D */}
-                                <div className="settings-card no-print">
-                                    <Card>
-                                        <h2 className="text-indigo-400 text-sm font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
-                                            <IconSettings size={18} /> Material Einstellungen
-                                        </h2>
-                                        <div className="grid grid-cols-2 gap-6">
-                                            <InputGroup label="Stangenlänge (mm)" value={stockLength} onChange={(e) => setStockLength(parseFloat(e.target.value)||0)} />
-                                            <InputGroup label="Sägeblatt (mm)" value={bladeWidth1D} onChange={(e) => setBladeWidth1D(parseFloat(e.target.value)||0)} />
-                                        </div>
-                                    </Card>
-
-                                    {/* List 1D */}
-                                    <Card className="mt-8">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h2 className="text-gray-300 text-sm font-bold uppercase tracking-wider">Teile-Liste</h2>
-                                            <div className="flex gap-2">
-                                                {/* IMPORT BUTTON */}
-                                                <button onClick={() => setShowImport1D(true)} className="bg-neutral-700 text-gray-300 p-2 rounded-xl hover:bg-neutral-600 hover:text-white transition-colors" title="Aus Excel importieren">
-                                                    <IconUpload size={20} />
-                                                </button>
-                                                {/* ADD BUTTON */}
-                                                <button onClick={addItem1D} className="bg-indigo-600/20 text-indigo-300 p-2 rounded-xl hover:bg-indigo-600 hover:text-white transition-colors">
-                                                    <IconPlus size={20} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {items1D.map((item, index) => (
-                                                <div key={item.id} className="flex items-center gap-3 bg-neutral-900/50 p-2 rounded-2xl border border-neutral-800 pr-4">
-                                                    <div className="text-neutral-600 font-mono text-xs w-8 text-center font-bold">#{index + 1}</div>
-                                                    
-                                                    {/* NEW: Name Input */}
-                                                    <div className="w-1/4 min-w-[80px]">
-                                                        <input type="text" placeholder="ISO / Bez" value={item.name} onChange={(e) => handleItemChange1D(item.id, 'name', e.target.value)} className="w-full bg-transparent text-indigo-200 p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors font-medium" />
-                                                    </div>
-
-                                                    <div className="flex-1">
-                                                        <input type="number" placeholder="Länge" value={item.length||''} onChange={(e) => handleItemChange1D(item.id, 'length', e.target.value)} className="w-full bg-transparent text-white p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors" />
-                                                    </div>
-                                                    <div className="w-20 border-l border-neutral-800 pl-3">
-                                                        <input type="number" placeholder="Anz" value={item.quantity||''} onChange={(e) => handleItemChange1D(item.id, 'quantity', e.target.value)} className="w-full bg-transparent text-center text-indigo-300 font-bold p-2 outline-none text-sm placeholder-neutral-600" />
-                                                    </div>
-                                                    <button onClick={() => removeItem1D(item.id)} className="p-2 text-neutral-500 hover:text-red-400 transition-colors"><IconTrash size={18} /></button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </Card>
-
-                                    <button onClick={calculate1D} className="w-full mt-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-900/30 flex justify-center items-center gap-3 active:scale-[0.98] transition-all text-lg">
-                                        <IconCalculator size={22} /> Optimierung Starten
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ================= 2D MODE ================= */}
-                        {mode === '2d' && (
-                            <div className="space-y-8 animate-fadeIn">
-                                {/* Settings 2D */}
-                                <div className="settings-card no-print">
-                                    <Card>
-                                        <h2 className="text-indigo-400 text-sm font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
-                                            <IconGrid size={18} /> Platten Einstellungen
-                                        </h2>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <InputGroup label="Breite" value={sheetWidth} onChange={(e) => setSheetWidth(parseFloat(e.target.value)||0)} />
-                                            <InputGroup label="Höhe" value={sheetHeight} onChange={(e) => setSheetHeight(parseFloat(e.target.value)||0)} />
-                                            <InputGroup label="Schnitt" value={bladeWidth2D} onChange={(e) => setBladeWidth2D(parseFloat(e.target.value)||0)} />
-                                        </div>
-                                    </Card>
-
-                                    {/* List 2D */}
-                                    <Card className="mt-8">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h2 className="text-gray-300 text-sm font-bold uppercase tracking-wider">Zuschnitt-Liste</h2>
-                                            <button onClick={addItem2D} className="bg-indigo-600/20 text-indigo-300 p-2 rounded-xl hover:bg-indigo-600 hover:text-white transition-colors">
-                                                <IconPlus size={20} />
-                                            </button>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {items2D.map((item, index) => (
-                                                <div key={item.id} className="flex items-center gap-3 bg-neutral-900/50 p-2 rounded-2xl border border-neutral-800 pr-4 flex-wrap sm:flex-nowrap">
-                                                    <div className="text-neutral-600 font-mono text-xs w-8 text-center font-bold">#{index + 1}</div>
-                                                    <div className="flex gap-2 flex-1 items-center">
-                                                        <div className="relative flex-1">
-                                                            <input type="number" placeholder="B" value={item.width||''} onChange={(e) => handleItemChange2D(item.id, 'width', e.target.value)} className="w-full bg-transparent text-white p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors" />
-                                                        </div>
-                                                        <span className="text-neutral-600 text-xs">x</span>
-                                                        <div className="relative flex-1">
-                                                            <input type="number" placeholder="H" value={item.height||''} onChange={(e) => handleItemChange2D(item.id, 'height', e.target.value)} className="w-full bg-transparent text-white p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-20 border-l border-neutral-800 pl-3">
-                                                        <input type="number" placeholder="Anz" value={item.quantity||''} onChange={(e) => handleItemChange2D(item.id, 'quantity', e.target.value)} className="w-full bg-transparent text-center text-indigo-300 font-bold p-2 outline-none text-sm placeholder-neutral-600" />
-                                                    </div>
-                                                    <button onClick={() => removeItem2D(item.id)} className="p-2 text-neutral-500 hover:text-red-400 transition-colors"><IconTrash size={18} /></button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </Card>
-
-                                    <button onClick={calculate2D} className="w-full mt-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-900/30 flex justify-center items-center gap-3 active:scale-[0.98] transition-all text-lg">
-                                        <IconCalculator size={22} /> Optimierung Starten
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ================= CALC MODE (Etagen) ================= */}
-                        {mode === 'calc' && (
-                            <div className="space-y-8 animate-fadeIn">
-                                <Card>
-                                    <h2 className="text-indigo-400 text-sm font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
-                                        <IconTriangle size={18} /> Etagen-Rechner
-                                    </h2>
-                                    <p className="text-gray-400 text-sm mb-6">
-                                        Berechnet die Passstücklänge bei einem Parallelversatz (Etage).
-                                    </p>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                        <InputGroup label="Versatz (Höhe)" value={calcOffset} onChange={(e) => setCalcOffset(parseFloat(e.target.value)||0)} />
-                                        <InputGroup label="Winkel (°)" value={calcAngle} onChange={(e) => setCalcAngle(parseFloat(e.target.value)||0)} />
-                                        <InputGroup label="Baumaß Bogen (1x)" value={calcTakeoff} onChange={(e) => setCalcTakeoff(parseFloat(e.target.value)||0)} />
-                                    </div>
-                                    
-                                    <div className="mt-8 p-6 bg-neutral-900/50 rounded-2xl border border-neutral-800 flex flex-col md:flex-row items-center gap-8 justify-between">
-                                        <div className="space-y-2">
-                                            <div className="text-gray-500 text-xs font-bold uppercase">Mittenmaß (Hypotenuse)</div>
-                                            <div className="text-2xl text-white font-mono">{etageResult.hypotenuse.toFixed(1)} mm</div>
-                                        </div>
-                                        <div className="hidden md:block h-12 w-px bg-neutral-700"></div>
-                                        <div className="space-y-2">
-                                            <div className="text-indigo-400 text-xs font-bold uppercase">Zuschnittslänge (Rohr)</div>
-                                            <div className="text-4xl text-indigo-400 font-bold font-mono">{etageResult.cutLength.toFixed(1)} mm</div>
-                                            <div className="text-xs text-gray-600">Mittenmaß - (2x Baumaß)</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Visualisierung (Simple SVG) */}
-                                    <div className="mt-8 flex justify-center opacity-50">
-                                        <svg width="300" height="150" viewBox="0 0 300 150" stroke="currentColor" fill="none" className="text-gray-500">
-                                            <path d="M50 120 L100 120 L200 30 L250 30" strokeWidth="4" />
-                                            <line x1="100" y1="120" x2="200" y2="30" strokeDasharray="4 4" strokeWidth="1" />
-                                            <text x="160" y="85" fill="currentColor" fontSize="12" stroke="none">Hypotenuse</text>
-                                            <line x1="280" y1="30" x2="280" y2="120" strokeWidth="1" />
-                                            <text x="285" y="80" fill="currentColor" fontSize="12" stroke="none">Versatz</text>
-                                        </svg>
-                                    </div>
-                                </Card>
-                            </div>
-                        )}
-
-
-                        {/* Error Message */}
-                        {error && (
-                        <div className="bg-red-500/10 text-red-400 p-4 rounded-2xl border border-red-500/20 flex items-center gap-3 animate-fadeIn no-print">
-                            <IconInfo size={20} /> <span className="font-medium">{error}</span>
-                        </div>
-                        )}
-
-                        {/* ================= RESULTS SECTION ================= */}
-                        {/* Print Button Row */}
-                        {((mode === '1d' && results1D && !error) || (mode === '2d' && results2D && !error)) && (
-                            <div className="flex justify-end gap-3 no-print">
-                                {/* LABEL TOGGLE (Only 1D) */}
-                                {mode === '1d' && (
-                                    <button 
-                                        onClick={() => setShowLabels(!showLabels)} 
-                                        className={`font-medium py-2 px-4 rounded-xl flex items-center gap-2 transition-colors border ${showLabels ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-neutral-800 text-gray-300 border-neutral-600'}`}
-                                    >
-                                        <IconTag size={18} /> {showLabels ? 'Zurück zur Liste' : 'Etikettenansicht'}
-                                    </button>
-                                )}
-                                <button onClick={handlePrint} className="bg-neutral-700 hover:bg-neutral-600 text-white font-medium py-2 px-4 rounded-xl flex items-center gap-2 transition-colors">
-                                    <IconPrinter size={18} /> Als PDF / Drucken
-                                </button>
-                            </div>
-                        )}
-
-                        {/* RESULTS 1D: LABELS GRID MODE */}
-                        {mode === '1d' && showLabels && (
-                            <div className="animate-fadeIn">
-                                {/* Print instruction for screen */}
-                                <div className="no-print bg-indigo-900/20 text-indigo-300 p-4 rounded-xl mb-6 border border-indigo-500/30 text-sm">
-                                    <span className="font-bold">Info:</span> Drücke jetzt auf "Drucken". Die Ansicht wird automatisch als Gitter für Klebeetiketten formatiert.
-                                </div>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 label-grid">
-                                    {getLabelItems().map((item, idx) => (
-                                        <div key={idx} className="bg-white text-black p-4 rounded-lg border-2 border-gray-200 flex flex-col justify-between h-32 label-card shadow-sm">
-                                            <div>
-                                                <div className="text-xs text-gray-500 uppercase font-bold">Projekt / ISO</div>
-                                                <div className="font-bold text-lg leading-tight truncate">{item.name || '-'}</div>
-                                            </div>
-                                            <div className="flex justify-between items-end">
-                                                <div>
-                                                    <div className="text-xs text-gray-500 uppercase">Länge</div>
-                                                    <div className="text-2xl font-mono font-bold">{item.length}</div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="text-xs text-gray-400">mm</div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* RESULTS 1D: STANDARD BAR MODE */}
-                        {mode === '1d' && results1D && !error && !showLabels && (
-                        <div className="space-y-6 animate-slideUp">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-emerald-500/10 p-5 rounded-3xl border border-emerald-500/20 text-center card-base">
-                                    <div className="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-1">Stangen</div>
-                                    <div className="text-3xl font-bold text-white">{stats1D.totalBars}</div>
-                                </div>
-                                <div className="bg-orange-500/10 p-5 rounded-3xl border border-orange-500/20 text-center card-base">
-                                    <div className="text-orange-400 text-xs font-bold uppercase tracking-widest mb-1">Verschnitt</div>
-                                    <div className="text-3xl font-bold text-white">{stats1D.wastePercentage}%</div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                {results1D.map((bar, idx) => (
-                                    <Card key={idx} className="overflow-hidden result-card">
-                                        {/* Header Zeile */}
-                                        <div className="flex justify-between items-center mb-4">
-                                            <span className="font-bold text-white flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500 no-print"></div> Stange {idx + 1}</span>
-                                            <span className="text-xs text-neutral-400 bg-neutral-900 px-3 py-1 rounded-full border border-neutral-700 no-print">Rest: {bar.remainingSpace}mm</span>
-                                            <span className="text-xs text-black border border-black px-2 py-1 rounded hidden print:block">Rest: {bar.remainingSpace}mm</span>
-                                        </div>
-
-                                        {/* 1. VISUELLE BALKEN */}
-                                        <div className="h-10 w-full bg-neutral-900 bar-bg rounded-lg flex border border-neutral-700 relative mb-4">
-                                            {bar.cuts.map((cut, cIdx) => {
-                                                const percent = (cut.totalSpace / stockLength) * 100;
-                                                const isTiny = percent < 4;
-                                                return (
-                                                    <div key={cIdx} style={{ width: `${percent}%` }} className="h-full bg-indigo-500 border-r border-indigo-400/30 flex items-center justify-center text-[10px] text-white whitespace-nowrap font-medium cut-segment transition-all hover:opacity-80" title={`${cut.length}mm - ${cut.name}`}>
-                                                        { !isTiny && cut.length }
-                                                    </div>
-                                                );
-                                            })}
-                                            <div className="flex-1 h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.03) 5px, rgba(255,255,255,0.03) 10px)' }}></div>
-                                        </div>
-
-                                        {/* 2. SCHNITT-REIHENFOLGE */}
-                                        <div className="flex flex-wrap gap-2 items-center">
-                                            <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-2">Zuschnitte:</span>
-                                            {bar.cuts.map((cut, cIdx) => (
-                                                <div key={cIdx} className="bg-neutral-700 text-white text-xs font-mono py-1 px-2.5 rounded-md border border-neutral-600 shadow-sm seq-chip flex gap-2">
-                                                    <span className="font-bold">{cut.length}</span>
-                                                    {cut.name && <span className="text-gray-400 border-l border-gray-500 pl-2">{cut.name}</span>}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </Card>
-                                ))}
-                            </div>
-                        </div>
-                        )}
-
-                        {/* RESULTS 2D */}
-                        {mode === '2d' && results2D && !error && (
-                        <div className="space-y-6 animate-slideUp">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-emerald-500/10 p-5 rounded-3xl border border-emerald-500/20 text-center card-base">
-                                    <div className="text-emerald-400 text-xs font-bold uppercase tracking-widest mb-1">Platten</div>
-                                    <div className="text-3xl font-bold text-white">{stats2D.totalSheets}</div>
-                                </div>
-                                <div className="bg-orange-500/10 p-5 rounded-3xl border border-orange-500/20 text-center card-base">
-                                    <div className="text-orange-400 text-xs font-bold uppercase tracking-widest mb-1">Verschnitt</div>
-                                    <div className="text-3xl font-bold text-white">{stats2D.wastePercentage}%</div>
-                                </div>
-                            </div>
-
-                            <div className="space-y-8">
-                                {results2D.map((sheet, idx) => (
-                                    <Card key={idx} className="result-card">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <span className="font-bold text-white text-lg">Platte {idx + 1}</span>
-                                            <span className="text-xs text-indigo-200 bg-indigo-500/20 border border-indigo-500/30 px-3 py-1 rounded-full">{sheetWidth} x {sheetHeight} mm</span>
-                                        </div>
-                                        
-                                        <div className="w-full overflow-hidden rounded-lg border-2 border-neutral-700 bg-neutral-900 relative shadow-inner print:border-black print:bg-white" style={{ aspectRatio: `${sheetWidth}/${sheetHeight}` }}>
-                                            <svg viewBox={`0 0 ${sheetWidth} ${sheetHeight}`} className="w-full h-full block">
-                                                <rect x="0" y="0" width={sheetWidth} height={sheetHeight} fill="#171717" />
-                                                {sheet.blocks.map((block, bIdx) => {
-                                                    const fontSize = Math.max(12, Math.min(block.originalW, block.originalH) / 5);
-                                                    return (
-                                                    <g key={bIdx}>
-                                                        <rect 
-                                                            x={block.fit.x} 
-                                                            y={block.fit.y} 
-                                                            width={block.originalW} 
-                                                            height={block.originalH} 
-                                                            fill="rgba(79, 70, 229, 0.4)" 
-                                                            stroke="#818cf8" 
-                                                            strokeWidth={Math.max(sheetWidth, sheetHeight) / 500}
-                                                        />
-                                                        {(block.originalW > sheetWidth/50 && block.originalH > sheetHeight/50) && (
-                                                            <text 
-                                                                x={block.fit.x + block.originalW/2} 
-                                                                y={block.fit.y + block.originalH/2} 
-                                                                dominantBaseline="middle" 
-                                                                textAnchor="middle" 
-                                                                fill="white" 
-                                                                fontWeight="bold"
-                                                                fontSize={fontSize}
-                                                                style={{pointerEvents: 'none', textShadow: '0 1px 2px rgba(0,0,0,0.8)'}}
-                                                            >
-                                                                {block.originalW}x{block.originalH}
-                                                            </text>
-                                                        )}
-                                                    </g>
-                                                )})}
-                                            </svg>
-                                        </div>
-                                    </Card>
-                                ))}
-                            </div>
-                        </div>
-                        )}
-                    </div>
-
-                    {/* IMPORT MODAL */}
-                    {showImport1D && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 no-print" onClick={() => setShowImport1D(false)}>
-                            <div className="bg-neutral-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-neutral-700 animate-modal" onClick={e => e.stopPropagation()}>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                                        <IconUpload size={20} className="text-indigo-400"/> Import aus Excel
-                                    </h3>
-                                    <button onClick={() => setShowImport1D(false)} className="text-gray-400 hover:text-white"><IconClose size={24}/></button>
-                                </div>
-                                <p className="text-sm text-gray-400 mb-4">
-                                    Spalten: Länge | Stück | ISO (optional)
-                                </p>
-                                <textarea 
-                                    className="w-full h-40 bg-neutral-900 text-white rounded-xl p-4 font-mono text-sm border border-neutral-700 outline-none focus:border-indigo-500"
-                                    placeholder={`Beispiel:\n200\t2\tISO-001\n250\t4\n400\t8\tSpool-3`}
-                                    value={importText}
-                                    onChange={e => setImportText(e.target.value)}
-                                ></textarea>
-                                <div className="flex justify-end gap-3 mt-6">
-                                    <button onClick={() => setShowImport1D(false)} className="px-4 py-2 rounded-xl text-sm font-bold text-gray-400 hover:text-white transition-colors">Abbrechen</button>
-                                    <button onClick={handleImport1D} className="px-6 py-2 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition-all">Daten Importieren</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+                            <button onClick={() => setMode('1d')} className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === '1d' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-
