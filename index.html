@@ -41,10 +41,10 @@
         /* ========================================= */
         
         @media print, .print-preview {
-            @page { margin: 1cm; size: A4; }
+            @page { margin: 0.5cm; size: A4; }
             
             /* UI Elemente ausblenden */
-            .no-print, .header-bar, .settings-card, .input-group, button { 
+            .no-print, .header-bar, .settings-card, .input-group, button, .tab-switcher { 
                 display: none !important; 
             }
 
@@ -66,6 +66,25 @@
                 color: black !important;
                 margin-bottom: 15px !important;
                 page-break-inside: avoid;
+            }
+
+            /* ETIKETTEN GRID */
+            .label-grid {
+                display: grid !important;
+                grid-template-columns: repeat(3, 1fr) !important; /* 3 Spalten auf A4 */
+                gap: 10px !important;
+            }
+            .label-card {
+                border: 2px solid #000 !important;
+                border-radius: 8px !important;
+                padding: 10px !important;
+                page-break-inside: avoid !important;
+                background: white !important;
+                color: black !important;
+                height: 120px !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: center !important;
             }
 
             /* Text Farben erzwingen */
@@ -109,6 +128,7 @@
         
         .print-preview { overflow-y: auto !important; }
         .print-header { display: none; }
+        .label-grid { display: none; } /* Standardmäßig ausblenden */
     </style>
 </head>
 <body class="text-gray-200 antialiased selection:bg-indigo-500 selection:text-white">
@@ -130,6 +150,8 @@
         const IconEye = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>;
         const IconUpload = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>;
         const IconClose = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>;
+        const IconTag = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>;
+        const IconTriangle = ({size=24}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18L3 3v18z"/></svg>;
 
         // --- COMPONENTS ---
         const Card = ({ children, className="" }) => (
@@ -138,11 +160,12 @@
             </div>
         );
 
-        const InputGroup = ({ label, value, onChange, placeholder, type="number" }) => (
+        const InputGroup = ({ label, value, onChange, placeholder, type="number", step="any" }) => (
             <div className="input-group">
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 ml-1">{label}</label>
                 <input 
                     type={type} 
+                    step={step}
                     value={value} 
                     onChange={onChange} 
                     placeholder={placeholder}
@@ -180,18 +203,19 @@
             // ============================================
             //  HIER DIE VERSIONSNUMMER ÄNDERN
             // ============================================
-            const APP_VERSION = "v1.1.0"; 
+            const APP_VERSION = "v1.2.0"; 
             // ============================================
 
             const [mode, setMode] = useState('1d');
             const [previewMode, setPreviewMode] = useState(false);
+            const [showLabels, setShowLabels] = useState(false); // New: Label Mode
 
             // --- 1D STATE ---
             const [stockLength, setStockLength] = useState(6000);
             const [bladeWidth1D, setBladeWidth1D] = useState(3);
             const [items1D, setItems1D] = useState([
-                { id: 1, length: 2800, quantity: 2 },
-                { id: 2, length: 50, quantity: 10 },
+                { id: 1, length: 2800, quantity: 2, name: 'ISO-101' },
+                { id: 2, length: 50, quantity: 10, name: '' },
             ]);
             const [results1D, setResults1D] = useState(null);
             const [stats1D, setStats1D] = useState(null);
@@ -210,20 +234,26 @@
             ]);
             const [results2D, setResults2D] = useState(null);
             const [stats2D, setStats2D] = useState(null);
+            
+            // --- CALC STATE (Etagen) ---
+            const [calcOffset, setCalcOffset] = useState(500); // Versatz
+            const [calcAngle, setCalcAngle] = useState(45); // Winkel
+            const [calcTakeoff, setCalcTakeoff] = useState(0); // Bogenabzug
+            
             const [error, setError] = useState('');
 
             // Vorschau Toggle Effekt
             useEffect(() => {
-                if (previewMode) {
-                    document.documentElement.classList.add('print-preview');
-                } else {
-                    document.documentElement.classList.remove('print-preview');
-                }
+                const root = document.documentElement;
+                if (previewMode) root.classList.add('print-preview');
+                else root.classList.remove('print-preview');
             }, [previewMode]);
 
             // --- LOGIC 1D ---
-            const handleItemChange1D = (id, field, value) => setItems1D(items1D.map(i => i.id === id ? { ...i, [field]: parseFloat(value) || 0 } : i));
-            const addItem1D = () => setItems1D([...items1D, { id: Date.now(), length: 0, quantity: 1 }]);
+            const handleItemChange1D = (id, field, value) => {
+                setItems1D(items1D.map(i => i.id === id ? { ...i, [field]: field === 'name' ? value : (parseFloat(value) || 0) } : i));
+            };
+            const addItem1D = () => setItems1D([...items1D, { id: Date.now(), length: 0, quantity: 1, name: '' }]);
             const removeItem1D = (id) => setItems1D(items1D.filter(i => i.id !== id));
             
             const handleImport1D = () => {
@@ -231,20 +261,19 @@
                 const newItems = [];
                 
                 rows.forEach(row => {
-                    // Kommas zu Punkten machen (Deutsch support) und Whitespace weg
                     let cleanRow = row.trim().replace(/,/g, '.');
-                    // Split bei Tabs (Excel) oder Semikolon (CSV) oder Pipe
-                    // Wir versuchen erst Tabs
+                    // Versuch Split: Tab oder Semikolon
                     let parts = cleanRow.split('\t');
-                    if (parts.length < 2) parts = cleanRow.split(';'); // Fallback CSV
-                    if (parts.length < 2) parts = cleanRow.split(/\s+/); // Fallback Leerzeichen (gefährlich, aber Versuch wert)
+                    if (parts.length < 2) parts = cleanRow.split(';');
+                    if (parts.length < 2) parts = cleanRow.split(/\s+/);
 
                     if (parts.length >= 2) {
                         const len = parseFloat(parts[0]);
                         const qty = parseFloat(parts[1]);
+                        const name = parts[2] ? parts.slice(2).join(' ') : ''; // Rest als Name
                         
                         if (!isNaN(len) && !isNaN(qty) && len > 0 && qty > 0) {
-                            newItems.push({ id: Date.now() + Math.random(), length: len, quantity: qty });
+                            newItems.push({ id: Date.now() + Math.random(), length: len, quantity: qty, name: name.trim() });
                         }
                     }
                 });
@@ -254,7 +283,7 @@
                     setShowImport1D(false);
                     setImportText("");
                 } else {
-                    alert("Keine gültigen Daten gefunden. Bitte Format 'Länge [TAB] Stück' beachten.");
+                    alert("Keine gültigen Daten gefunden. Format: 'Länge [TAB] Stück [TAB] ISO-Nr'.");
                 }
             };
 
@@ -265,7 +294,8 @@
                 items1D.forEach(item => {
                     if (item.length > 0 && item.quantity > 0) {
                         if (item.length > stockLength) setError(`Teil ${item.length}mm zu lang für Stange!`);
-                        for (let i = 0; i < item.quantity; i++) allCuts.push({ id: item.id, length: item.length, totalSpace: item.length + bladeWidth1D });
+                        // WICHTIG: Name mit übergeben
+                        for (let i = 0; i < item.quantity; i++) allCuts.push({ id: item.id, length: item.length, totalSpace: item.length + bladeWidth1D, name: item.name });
                     }
                 });
                 if (error) return;
@@ -289,6 +319,7 @@
                 const reqMat = allCuts.reduce((acc, c) => acc + c.length, 0);
                 setStats1D({ totalBars: bars.length, wastePercentage: (((usedMat - reqMat) / usedMat) * 100).toFixed(1), totalWaste });
                 setResults1D(bars);
+                setShowLabels(false); // Reset Label View on calc
             };
 
             // --- LOGIC 2D ---
@@ -330,8 +361,30 @@
                 setResults2D(sheets);
             };
 
+            // --- CALCULATOR LOGIC ---
+            const calculateEtage = () => {
+                if(!calcAngle || calcAngle <= 0 || calcAngle >= 90) return { hypotenuse: 0, cutLength: 0 };
+                // Hypotenuse = Gegenkathete / sin(alpha)
+                const rad = calcAngle * (Math.PI / 180);
+                const hypotenuse = calcOffset / Math.sin(rad);
+                const cutLength = hypotenuse - (2 * calcTakeoff);
+                return { hypotenuse: Math.abs(hypotenuse), cutLength: cutLength };
+            };
+            const etageResult = calculateEtage();
+
             const handlePrint = () => {
                 window.print();
+            };
+
+            // Helper to expand items for label view
+            const getLabelItems = () => {
+                let labels = [];
+                items1D.forEach(item => {
+                    for(let i=0; i<item.quantity; i++) {
+                        labels.push({ ...item, quantity: 1 });
+                    }
+                });
+                return labels;
             };
 
             return (
@@ -372,7 +425,7 @@
                     <div className="max-w-2xl mx-auto p-6 space-y-8">
 
                         {/* MODE SWITCHER */}
-                        <div className="bg-neutral-800 p-1.5 rounded-full shadow-lg flex relative border border-neutral-700 no-print">
+                        <div className="bg-neutral-800 p-1.5 rounded-full shadow-lg flex relative border border-neutral-700 no-print tab-switcher">
                             <button 
                                 onClick={() => setMode('1d')}
                                 className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === '1d' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
@@ -384,6 +437,13 @@
                                 className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === '2d' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
                             >
                                 <IconGrid size={18} /> Platten (2D)
+                            </button>
+                            {/* NEW: Rechner Tab */}
+                            <button 
+                                onClick={() => setMode('calc')}
+                                className={`flex-1 py-3 rounded-full text-sm font-bold flex items-center justify-center gap-2 transition-all duration-300 ${mode === 'calc' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-neutral-700'}`}
+                            >
+                                <IconTriangle size={18} /> Rechner
                             </button>
                         </div>
 
@@ -421,6 +481,12 @@
                                             {items1D.map((item, index) => (
                                                 <div key={item.id} className="flex items-center gap-3 bg-neutral-900/50 p-2 rounded-2xl border border-neutral-800 pr-4">
                                                     <div className="text-neutral-600 font-mono text-xs w-8 text-center font-bold">#{index + 1}</div>
+                                                    
+                                                    {/* NEW: Name Input */}
+                                                    <div className="w-1/4 min-w-[80px]">
+                                                        <input type="text" placeholder="ISO / Bez" value={item.name} onChange={(e) => handleItemChange1D(item.id, 'name', e.target.value)} className="w-full bg-transparent text-indigo-200 p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors font-medium" />
+                                                    </div>
+
                                                     <div className="flex-1">
                                                         <input type="number" placeholder="Länge" value={item.length||''} onChange={(e) => handleItemChange1D(item.id, 'length', e.target.value)} className="w-full bg-transparent text-white p-2 border-b border-neutral-700 focus:border-indigo-500 outline-none text-sm placeholder-neutral-600 transition-colors" />
                                                     </div>
@@ -493,6 +559,50 @@
                             </div>
                         )}
 
+                        {/* ================= CALC MODE (Etagen) ================= */}
+                        {mode === 'calc' && (
+                            <div className="space-y-8 animate-fadeIn">
+                                <Card>
+                                    <h2 className="text-indigo-400 text-sm font-bold uppercase tracking-wider mb-6 flex items-center gap-2">
+                                        <IconTriangle size={18} /> Etagen-Rechner
+                                    </h2>
+                                    <p className="text-gray-400 text-sm mb-6">
+                                        Berechnet die Passstücklänge bei einem Parallelversatz (Etage).
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <InputGroup label="Versatz (Höhe)" value={calcOffset} onChange={(e) => setCalcOffset(parseFloat(e.target.value)||0)} />
+                                        <InputGroup label="Winkel (°)" value={calcAngle} onChange={(e) => setCalcAngle(parseFloat(e.target.value)||0)} />
+                                        <InputGroup label="Baumaß Bogen (1x)" value={calcTakeoff} onChange={(e) => setCalcTakeoff(parseFloat(e.target.value)||0)} />
+                                    </div>
+                                    
+                                    <div className="mt-8 p-6 bg-neutral-900/50 rounded-2xl border border-neutral-800 flex flex-col md:flex-row items-center gap-8 justify-between">
+                                        <div className="space-y-2">
+                                            <div className="text-gray-500 text-xs font-bold uppercase">Mittenmaß (Hypotenuse)</div>
+                                            <div className="text-2xl text-white font-mono">{etageResult.hypotenuse.toFixed(1)} mm</div>
+                                        </div>
+                                        <div className="hidden md:block h-12 w-px bg-neutral-700"></div>
+                                        <div className="space-y-2">
+                                            <div className="text-indigo-400 text-xs font-bold uppercase">Zuschnittslänge (Rohr)</div>
+                                            <div className="text-4xl text-indigo-400 font-bold font-mono">{etageResult.cutLength.toFixed(1)} mm</div>
+                                            <div className="text-xs text-gray-600">Mittenmaß - (2x Baumaß)</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Visualisierung (Simple SVG) */}
+                                    <div className="mt-8 flex justify-center opacity-50">
+                                        <svg width="300" height="150" viewBox="0 0 300 150" stroke="currentColor" fill="none" className="text-gray-500">
+                                            <path d="M50 120 L100 120 L200 30 L250 30" strokeWidth="4" />
+                                            <line x1="100" y1="120" x2="200" y2="30" strokeDasharray="4 4" strokeWidth="1" />
+                                            <text x="160" y="85" fill="currentColor" fontSize="12" stroke="none">Hypotenuse</text>
+                                            <line x1="280" y1="30" x2="280" y2="120" strokeWidth="1" />
+                                            <text x="285" y="80" fill="currentColor" fontSize="12" stroke="none">Versatz</text>
+                                        </svg>
+                                    </div>
+                                </Card>
+                            </div>
+                        )}
+
+
                         {/* Error Message */}
                         {error && (
                         <div className="bg-red-500/10 text-red-400 p-4 rounded-2xl border border-red-500/20 flex items-center gap-3 animate-fadeIn no-print">
@@ -501,17 +611,55 @@
                         )}
 
                         {/* ================= RESULTS SECTION ================= */}
-                        {/* Print Button */}
+                        {/* Print Button Row */}
                         {((mode === '1d' && results1D && !error) || (mode === '2d' && results2D && !error)) && (
-                            <div className="flex justify-end no-print">
+                            <div className="flex justify-end gap-3 no-print">
+                                {/* LABEL TOGGLE (Only 1D) */}
+                                {mode === '1d' && (
+                                    <button 
+                                        onClick={() => setShowLabels(!showLabels)} 
+                                        className={`font-medium py-2 px-4 rounded-xl flex items-center gap-2 transition-colors border ${showLabels ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-neutral-800 text-gray-300 border-neutral-600'}`}
+                                    >
+                                        <IconTag size={18} /> {showLabels ? 'Zurück zur Liste' : 'Etikettenansicht'}
+                                    </button>
+                                )}
                                 <button onClick={handlePrint} className="bg-neutral-700 hover:bg-neutral-600 text-white font-medium py-2 px-4 rounded-xl flex items-center gap-2 transition-colors">
                                     <IconPrinter size={18} /> Als PDF / Drucken
                                 </button>
                             </div>
                         )}
 
-                        {/* RESULTS 1D */}
-                        {mode === '1d' && results1D && !error && (
+                        {/* RESULTS 1D: LABELS GRID MODE */}
+                        {mode === '1d' && showLabels && (
+                            <div className="animate-fadeIn">
+                                {/* Print instruction for screen */}
+                                <div className="no-print bg-indigo-900/20 text-indigo-300 p-4 rounded-xl mb-6 border border-indigo-500/30 text-sm">
+                                    <span className="font-bold">Info:</span> Drücke jetzt auf "Drucken". Die Ansicht wird automatisch als Gitter für Klebeetiketten formatiert.
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 label-grid">
+                                    {getLabelItems().map((item, idx) => (
+                                        <div key={idx} className="bg-white text-black p-4 rounded-lg border-2 border-gray-200 flex flex-col justify-between h-32 label-card shadow-sm">
+                                            <div>
+                                                <div className="text-xs text-gray-500 uppercase font-bold">Projekt / ISO</div>
+                                                <div className="font-bold text-lg leading-tight truncate">{item.name || '-'}</div>
+                                            </div>
+                                            <div className="flex justify-between items-end">
+                                                <div>
+                                                    <div className="text-xs text-gray-500 uppercase">Länge</div>
+                                                    <div className="text-2xl font-mono font-bold">{item.length}</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-xs text-gray-400">mm</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* RESULTS 1D: STANDARD BAR MODE */}
+                        {mode === '1d' && results1D && !error && !showLabels && (
                         <div className="space-y-6 animate-slideUp">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-emerald-500/10 p-5 rounded-3xl border border-emerald-500/20 text-center card-base">
@@ -534,27 +682,27 @@
                                             <span className="text-xs text-black border border-black px-2 py-1 rounded hidden print:block">Rest: {bar.remainingSpace}mm</span>
                                         </div>
 
-                                        {/* 1. VISUELLE BALKEN (Ohne Text bei kleinen Teilen) */}
+                                        {/* 1. VISUELLE BALKEN */}
                                         <div className="h-10 w-full bg-neutral-900 bar-bg rounded-lg flex border border-neutral-700 relative mb-4">
                                             {bar.cuts.map((cut, cIdx) => {
                                                 const percent = (cut.totalSpace / stockLength) * 100;
-                                                const isTiny = percent < 4; // Wenn kleiner als 4%, Text ausblenden
+                                                const isTiny = percent < 4;
                                                 return (
-                                                    <div key={cIdx} style={{ width: `${percent}%` }} className="h-full bg-indigo-500 border-r border-indigo-400/30 flex items-center justify-center text-[10px] text-white whitespace-nowrap font-medium cut-segment transition-all hover:opacity-80" title={`${cut.length}mm`}>
+                                                    <div key={cIdx} style={{ width: `${percent}%` }} className="h-full bg-indigo-500 border-r border-indigo-400/30 flex items-center justify-center text-[10px] text-white whitespace-nowrap font-medium cut-segment transition-all hover:opacity-80" title={`${cut.length}mm - ${cut.name}`}>
                                                         { !isTiny && cut.length }
                                                     </div>
                                                 );
                                             })}
-                                            {/* Schraffierter Restbereich */}
                                             <div className="flex-1 h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.03) 5px, rgba(255,255,255,0.03) 10px)' }}></div>
                                         </div>
 
-                                        {/* 2. SCHNITT-REIHENFOLGE (Chips / Badges) - Die eigentliche Lösung */}
+                                        {/* 2. SCHNITT-REIHENFOLGE */}
                                         <div className="flex flex-wrap gap-2 items-center">
-                                            <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-2">Schnitt-Reihenfolge:</span>
+                                            <span className="text-xs text-gray-500 uppercase font-bold tracking-wider mr-2">Zuschnitte:</span>
                                             {bar.cuts.map((cut, cIdx) => (
-                                                <div key={cIdx} className="bg-neutral-700 text-white text-xs font-mono py-1 px-2.5 rounded-md border border-neutral-600 shadow-sm seq-chip">
-                                                    {cut.length}
+                                                <div key={cIdx} className="bg-neutral-700 text-white text-xs font-mono py-1 px-2.5 rounded-md border border-neutral-600 shadow-sm seq-chip flex gap-2">
+                                                    <span className="font-bold">{cut.length}</span>
+                                                    {cut.name && <span className="text-gray-400 border-l border-gray-500 pl-2">{cut.name}</span>}
                                                 </div>
                                             ))}
                                         </div>
@@ -588,12 +736,9 @@
                                         
                                         <div className="w-full overflow-hidden rounded-lg border-2 border-neutral-700 bg-neutral-900 relative shadow-inner print:border-black print:bg-white" style={{ aspectRatio: `${sheetWidth}/${sheetHeight}` }}>
                                             <svg viewBox={`0 0 ${sheetWidth} ${sheetHeight}`} className="w-full h-full block">
-                                                {/* Hintergrund Gittermuster */}
                                                 <rect x="0" y="0" width={sheetWidth} height={sheetHeight} fill="#171717" />
                                                 {sheet.blocks.map((block, bIdx) => {
-                                                    // Intelligente Schriftgröße: Nicht kleiner als 12px (in relation)
                                                     const fontSize = Math.max(12, Math.min(block.originalW, block.originalH) / 5);
-                                                    
                                                     return (
                                                     <g key={bIdx}>
                                                         <rect 
@@ -623,9 +768,6 @@
                                                 )})}
                                             </svg>
                                         </div>
-                                        <div className="mt-4 text-xs text-center text-gray-500 font-mono">
-                                            Schwarze Fläche = Abfall ({((1 - (sheet.blocks.reduce((a,b)=>a+(b.originalW*b.originalH),0) / (sheetWidth*sheetHeight)))*100).toFixed(1)}%)
-                                        </div>
                                     </Card>
                                 ))}
                             </div>
@@ -644,11 +786,11 @@
                                     <button onClick={() => setShowImport1D(false)} className="text-gray-400 hover:text-white"><IconClose size={24}/></button>
                                 </div>
                                 <p className="text-sm text-gray-400 mb-4">
-                                    Kopiere deine Spalten (Länge | Stück) aus Excel oder Google Sheets und füge sie hier ein.
+                                    Spalten: Länge | Stück | ISO (optional)
                                 </p>
                                 <textarea 
                                     className="w-full h-40 bg-neutral-900 text-white rounded-xl p-4 font-mono text-sm border border-neutral-700 outline-none focus:border-indigo-500"
-                                    placeholder={`Beispiel:\n200\t2\n250\t4\n400\t8`}
+                                    placeholder={`Beispiel:\n200\t2\tISO-001\n250\t4\n400\t8\tSpool-3`}
                                     value={importText}
                                     onChange={e => setImportText(e.target.value)}
                                 ></textarea>
